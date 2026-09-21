@@ -1,20 +1,21 @@
 {
 	"$schema": "../node_modules/@companion-module/base/assets/manifest.schema.json",
 	"type": "connection",
-	"id": "your-module-name",
-	"name": "your-module-name",
-	"shortname": "module-shortname",
-	"description": "A short one line description of your module",
-	"version": "0.0.0",
+	"id": "unifi-network",
+	"name": "Unifi Network",
+	"shortname": "Unifi Network",
+	"description": "Control and feedback for Ubiquiti Unifi Network devices via the Unifi Network API.",
+	"version": "0.1.0",
 	"license": "MIT",
-	"repository": "git+https://github.com/bitfocus/companion-module-your-module-name.git",
-	"bugs": "https://github.com/bitfocus/companion-module-your-module-name/issues",
+	"repository": "git+https://github.com/bitfocus/companion-module-unifi-network.git",
+	"bugs": "https://github.com/bitfocus/companion-module-unifi-network/issues",
 	"maintainers": [
 		{
-			"name": "Your name",
-			"email": "Your email"
+			"name": "Britt Ryan",
+			"email": "bryan@thesummitchurch.org"
 		}
 	],
+
 	"runtime": {
 		"type": "node22",
 		"api": "nodejs-ipc",
@@ -22,7 +23,7 @@
 		"entrypoint": "../dist/main.js"
 	},
 	"legacyIds": [],
-	"manufacturer": "Your company",
-	"products": ["Your product"],
+	"manufacturer": "The Summit Church",
+	"products": ["QuickControl"],
 	"keywords": []
 }
