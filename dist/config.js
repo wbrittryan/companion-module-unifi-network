@@ -33,6 +33,22 @@ export function GetConfigFields() {
             width: 6,
         },
         {
+            type: 'secret-text',
+            id: 'mfaToken',
+            label: 'MFA / TOTP Code (optional)',
+            width: 6,
+            tooltip: 'Only needed if the account above has multi-factor authentication (2FA/TOTP, e.g. an authenticator ' +
+                'app) turned on — including Ubiquiti accounts used for remote/cloud management, since this module ' +
+                "still authenticates against the console's local login endpoint. Enter the CURRENT 6-digit code " +
+                'from your authenticator app and save. IMPORTANT: TOTP codes are single-use and expire after about ' +
+                '30 seconds, so this is not a "set once" field — it only gets the module connected right now. Every ' +
+                'future reconnect (Companion restart, network drop, editing this config again) needs a fresh code ' +
+                'typed in here first, or the connection will fail until you do. If you can create a local admin ' +
+                'account without MFA instead, that avoids this entirely and is the more reliable long-term setup. ' +
+                'Leave this blank if the account has no MFA.',
+            default: '',
+        },
+        {
             type: 'textinput',
             id: 'site',
             label: 'Site',

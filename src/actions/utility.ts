@@ -23,7 +23,7 @@ export type UtilityActionsSchema = {
 // "usp" (UPS/UPS Pro) isn't in unifi-api-ts's own typed union — that library predates the product —
 // but the live console reports it as "usp", confirmed against community integrations that already
 // support the UPS-2U-Pro (see the tooltip on the outlet fields below for details/caveats).
-const DEVICE_TYPE_LABELS: Record<string, string> = {
+export const DEVICE_TYPE_LABELS: Record<string, string> = {
 	uap: 'Access Point',
 	usw: 'Switch',
 	ugw: 'Gateway',
@@ -53,14 +53,21 @@ const COMMAND_SPEC: Record<string, { endpoint: string; macField: 'mac' | 'macs' 
 
 // Device commands that only make sense for a specific UniFiDevice.type — checked against the cached
 // inventory at run time, since Companion can't filter one field's choices by another field's value.
+// "set-outlet" is NOT here: UniFi's SmartPower family doesn't share one type code — the UPS/UPS Pro
+// report "usp", but UniFi's own PHP client (github.com/Art-of-WiFi/UniFi-API-client, the project
+// unifi-api-ts is ported from) confirms the PDU Pro reports "usw", the *same* code as an ordinary
+// switch, and its outlet detection is by model string ("USPPDUP", "UP1" for USP-Plug, likely more for
+// USP-Strip that we haven't confirmed). A type/model allowlist would be both wrong (blocks real PDUs)
+// and incomplete (misses future SmartPower form factors) — so "set-outlet" is instead gated by
+// whether the device actually reports outlets at all, checked directly against real data below.
 const DEVICE_COMMAND_REQUIRES_TYPE: Record<string, string> = {
 	'power-cycle': 'usw',
-	'set-outlet': 'usp',
 }
 
-// UniFi's raw device-state payload for a UPS includes an outlet_table (index/relay_state/etc per
-// outlet) that unifi-api-ts doesn't model in its UniFiDevice type. This is the minimal shape used to
-// read current outlet state before writing an override (see the "set-outlet" branch in the callback).
+// UniFi's raw device-state payload for anything in the SmartPower family (UPS, UPS Pro, PDU Pro,
+// Smart Plug, Smart Strip, ...) includes an outlet_table (index/relay_state/etc per outlet) that
+// unifi-api-ts doesn't model in its UniFiDevice type. This is the minimal shape used both to detect
+// outlet capability and to read current outlet state before writing an override (see "set-outlet" below).
 interface OutletTableEntry {
 	index: number
 	relay_state?: boolean
@@ -141,14 +148,17 @@ export function buildUtilityActions(self: ModuleInstance): CompanionActionDefini
 					type: 'dropdown',
 					label: 'Device Command',
 					tooltip:
-						'What to do to the device selected above. "Power Cycle Switch Port" only works on switches and "Set Outlet Power" only works on a UPS — picking either for any other device type is rejected before anything is sent.',
+						'What to do to the device selected above. "Power Cycle Switch Port" only works on switches, and "Set Outlet Power" only works on a UniFi SmartPower device (UPS, UPS Pro, PDU Pro, Smart Plug, Smart Strip, etc) — picking either for a device that doesn\'t support it is rejected before anything is sent.',
 					choices: [
 						{ id: 'restart', label: 'Restart Device (needs Reboot Type below)' },
 						{ id: 'power-cycle', label: 'Power Cycle Switch Port (needs Switch Port below; switches only)' },
 						{ id: 'force-provision', label: 'Force Provision Device' },
 						{ id: 'set-locate', label: 'Locate Device (start blinking LED)' },
 						{ id: 'unset-locate', label: 'Locate Device (stop blinking LED)' },
-						{ id: 'set-outlet', label: 'Set Outlet Power (needs Outlet Number/Outlet On below; UPS only)' },
+						{
+							id: 'set-outlet',
+							label: 'Set Outlet Power (needs Outlet Number/Outlet On below; SmartPower devices only)',
+						},
 					],
 					default: 'restart',
 					disableAutoExpression: true,
@@ -192,7 +202,7 @@ export function buildUtilityActions(self: ModuleInstance): CompanionActionDefini
 					type: 'number',
 					label: 'Outlet Number',
 					tooltip:
-						"Which outlet on the UPS to control. Numbering isn't confirmed for every UPS/UPS Pro unit — start with 1, then check the physical outlet (or the UniFi app) to see which one actually switched, and adjust if it wasn't the one you expected. Not every outlet on every UPS model can be switched independently — some are metering-only.",
+						"Which outlet on the device to control. Numbering isn't confirmed for every SmartPower model — start with 1, then check the physical outlet (or the UniFi app) to see which one actually switched, and adjust if it wasn't the one you expected. Not every outlet on every model can be switched independently — some are metering-only.",
 					default: 1,
 					min: 0,
 					max: 999999999,
@@ -232,6 +242,19 @@ export function buildUtilityActions(self: ModuleInstance): CompanionActionDefini
 								`"${device.name ?? mac}" is a ${DEVICE_TYPE_LABELS[device.type] ?? device.type}, not a ${DEVICE_TYPE_LABELS[requiredType] ?? requiredType} — this command doesn't apply to it`,
 							)
 						}
+						// "set-outlet" has no single type/model to check against (see the comment on
+						// DEVICE_COMMAND_REQUIRES_TYPE above) — gate it on whether the cached snapshot of this
+						// device actually reports outlets. This is a friendly pre-flight check only, using the
+						// up-to-60s-stale inventory cache; the callback re-verifies against a fresh fetch below
+						// before actually writing anything.
+						if (command === 'set-outlet' && device) {
+							const cachedOutlets = (device as typeof device & { outlet_table?: OutletTableEntry[] }).outlet_table
+							if (!cachedOutlets || cachedOutlets.length === 0) {
+								throw new Error(
+									`"${device.name ?? mac}" doesn't report any controllable outlets — Set Outlet Power only works on UniFi SmartPower devices (UPS, UPS Pro, PDU Pro, Smart Plug, Smart Strip, etc)`,
+								)
+							}
+						}
 					}
 
 					// UniFi OS consoles (UDM/UDR/Cloud Gateway) serve the Network app behind a "/proxy/network"
@@ -261,6 +284,11 @@ export function buildUtilityActions(self: ModuleInstance): CompanionActionDefini
 							((typeof self.devices)[number] & { outlet_table?: OutletTableEntry[] }) | undefined
 						if (!deviceWithOutlets) {
 							throw new Error(`No device found with MAC ${mac}`)
+						}
+						if (!deviceWithOutlets.outlet_table || deviceWithOutlets.outlet_table.length === 0) {
+							throw new Error(
+								`"${deviceWithOutlets.name ?? mac}" doesn't report any controllable outlets — Set Outlet Power only works on UniFi SmartPower devices (UPS, UPS Pro, PDU Pro, Smart Plug, Smart Strip, etc)`,
+							)
 						}
 
 						const outletIdx = event.options.outlet_idx

@@ -31,6 +31,39 @@ function attachCsrfTokenHandling(unifi) {
         return response;
     });
 }
+// True when unifi.login() failed because the account has multi-factor authentication (2FA/TOTP) turned
+// on. Confirmed against real UniFi OS behavior (not guessed): a login attempt with no/invalid token gets
+// rejected with HTTP 499 and a body of the form {meta: {msg: "api.err.Ubic2faTokenRequired"}} — unifi-api-ts's
+// HTTPClient surfaces that meta.msg text as the thrown error's message, so we can match on it here.
+function isMfaRequiredError(error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return /ubic2fatokenrequired|2fa|mfa/i.test(message);
+}
+// unifi-api-ts has no concept of MFA at all — its login() always POSTs just {username, password}, with
+// no field for a TOTP code and no handling of the 499 challenge above. This replays that same login POST
+// by hand, through the same axios instance (so it shares its cookie jar and the CSRF interceptor already
+// attached by attachCsrfTokenHandling), but with the extra `token` field UniFi OS expects for the second,
+// MFA-completing attempt. On success it hand-writes the library's internal session state to "authenticated"
+// (see SessionManagerLike above) so every later action/inventory call just works through the normal API.
+async function completeMfaLogin(unifi, username, password, mfaToken) {
+    const axiosClient = unifi.getHttpClient().client;
+    // Throws on any non-2xx response (axios's default), e.g. a wrong/expired code — that rejection
+    // propagates straight up to connectToUnifi()'s catch block, same as any other login failure.
+    await axiosClient.post('/api/auth/login', {
+        username,
+        password,
+        token: mfaToken,
+        remember: false,
+        strict: true,
+    });
+    const sessionManager = unifi.getSessionManager();
+    sessionManager.sessionInfo = {
+        isAuthenticated: true,
+        loginTime: new Date(),
+        lastActivity: new Date(),
+        username,
+    };
+}
 export default class ModuleInstance extends InstanceBase {
     config; // Setup in init()
     secrets; // Setup in init()
@@ -99,7 +132,22 @@ export default class ModuleInstance extends InstanceBase {
                 verifySsl: this.config.verifySsl,
             });
             attachCsrfTokenHandling(this.unifi);
-            await this.unifi.login();
+            try {
+                await this.unifi.login();
+            }
+            catch (error) {
+                if (!isMfaRequiredError(error)) {
+                    throw error;
+                }
+                // Plain login was rejected specifically because this account needs an MFA code. If one was
+                // supplied, replay the login with it attached; otherwise fail with a message that tells the
+                // user exactly what to do, instead of surfacing the console's raw "Ubic2faTokenRequired".
+                if (!this.secrets.mfaToken) {
+                    throw new Error('This account requires a multi-factor authentication code. Enter the current 6-digit code ' +
+                        'from your authenticator app in the "MFA / TOTP Code" config field and save the connection.', { cause: error });
+                }
+                await completeMfaLogin(this.unifi, this.config.username, this.secrets.password, this.secrets.mfaToken);
+            }
             this.updateStatus(InstanceStatus.Ok);
             // Populate the picker dropdowns immediately, then keep them in sync every 60s. 60s is
             // conservative on purpose — polling faster risks tripping the console's own login/request

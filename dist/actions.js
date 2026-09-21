@@ -1,5 +1,27 @@
 import { InstanceStatus } from '@companion-module/base';
-import { buildUtilityActions } from './actions/utility.js';
+import { buildUtilityActions, DEVICE_TYPE_LABELS } from './actions/utility.js';
+// Live dropdown choices built from the cached device inventory (self.devices, refreshed every 60s — see
+// ModuleInstance.refreshInventory in main.ts), same pattern as the Utility action's device picker. Every
+// action below rebuilds its choices fresh each time UpdateActions() runs, so a refresh keeps them in sync.
+// idField picks whether each choice's value is the device's MAC or its internal _id, since different
+// unifi-api-ts endpoints key on one or the other (fire-and-forget commands use MAC, REST config endpoints
+// like led_override use _id) — filterType narrows to one UniFiDevice.type when an action only ever
+// applies to one kind of device (e.g. Power Cycle Switch Port only makes sense on a switch).
+function deviceChoices(self, idField, filterType) {
+    return self.devices
+        .filter((d) => !filterType || d.type === filterType)
+        .map((d) => ({
+        id: d[idField],
+        label: `${d.name ?? d.model} (${DEVICE_TYPE_LABELS[d.type] ?? d.type}) — ${d.mac}`,
+    }));
+}
+// Same, for the live client inventory (self.clients).
+function clientChoices(self) {
+    return self.clients.map((c) => ({
+        id: c.mac,
+        label: `${c.name ?? c.hostname ?? c.mac} — ${c.mac}`,
+    }));
+}
 export function UpdateActions(self) {
     self.setActionDefinitions({
         test_connection: {
@@ -35,10 +57,12 @@ export function UpdateActions(self) {
                 // unifi-api-ts parameter "mac" (required)
                 {
                     id: 'mac',
-                    type: 'textinput',
-                    label: 'MAC',
-                    tooltip: 'MAC address of the currently connected device to force a reconnect on, e.g. aa:bb:cc:dd:ee:ff.',
+                    type: 'dropdown',
+                    label: 'Client',
+                    tooltip: "Pick a client from the list (pulled live from the console) — or type a MAC address directly, e.g. aa:bb:cc:dd:ee:ff, if it isn't in the list yet.",
+                    choices: clientChoices(self),
                     default: '',
+                    allowCustom: true,
                 },
             ],
             callback: async (event) => {
@@ -67,13 +91,15 @@ export function UpdateActions(self) {
             name: 'Devices: Disable Access Point',
             description: "Use this to turn a Wi-Fi access point's radios off or back on without removing it from the controller. When disabled, that AP stops broadcasting Wi-Fi and anyone connected to it gets dropped; run it again with disable turned off to bring it back. Handy for quickly killing a problem AP during a service without deleting it.",
             options: [
-                // unifi-api-ts parameter "ap_id" (required)
+                // unifi-api-ts parameter "ap_id" (required) — this endpoint keys on the device's internal _id, not its MAC
                 {
                     id: 'ap_id',
-                    type: 'textinput',
-                    label: 'AP ID',
-                    tooltip: 'Internal device ID of the access point (the long 24-character code), not its name — copy it from the List Devices output.',
+                    type: 'dropdown',
+                    label: 'Access Point',
+                    tooltip: "Pick an access point from the list (pulled live from the console) — or type its internal device ID directly, if it isn't in the list yet.",
+                    choices: deviceChoices(self, '_id', 'uap'),
                     default: '',
+                    allowCustom: true,
                 },
                 // unifi-api-ts parameter "disable" (required)
                 {
@@ -106,13 +132,15 @@ export function UpdateActions(self) {
             name: 'Devices: Override LED',
             description: "Use this to force a device's status LED to stay off, stay on, or return to the controller's normal/default behavior. Handy for darkening a device's LED in a sanctuary or stage area where a blinking or glowing light is distracting, or restoring it to normal afterward.",
             options: [
-                // unifi-api-ts parameter "device_id" (required)
+                // unifi-api-ts parameter "device_id" (required) — this endpoint keys on the device's internal _id, not its MAC
                 {
                     id: 'device_id',
-                    type: 'textinput',
-                    label: 'Device ID',
-                    tooltip: "Internal device ID (the 24-character code), not the device's name — copy it from the List Devices output.",
+                    type: 'dropdown',
+                    label: 'Device',
+                    tooltip: "Pick a device from the list (pulled live from the console) — or type its internal device ID directly, if it isn't in the list yet.",
+                    choices: deviceChoices(self, '_id'),
                     default: '',
+                    allowCustom: true,
                 },
                 // unifi-api-ts parameter "override_mode" (required) — one of: off, on, default
                 {
@@ -155,10 +183,12 @@ export function UpdateActions(self) {
                 // unifi-api-ts parameter "mac" (required)
                 {
                     id: 'mac',
-                    type: 'textinput',
-                    label: 'MAC',
-                    tooltip: 'MAC address of the access point you want to locate, e.g. aa:bb:cc:dd:ee:ff.',
+                    type: 'dropdown',
+                    label: 'Access Point',
+                    tooltip: "Pick the access point to locate from the list (pulled live from the console) — or type its MAC address directly, e.g. aa:bb:cc:dd:ee:ff, if it isn't in the list yet.",
+                    choices: deviceChoices(self, 'mac', 'uap'),
                     default: '',
+                    allowCustom: true,
                 },
                 // unifi-api-ts parameter "enable" (required)
                 {
@@ -194,10 +224,12 @@ export function UpdateActions(self) {
                 // unifi-api-ts parameter "mac" (required)
                 {
                     id: 'mac',
-                    type: 'textinput',
-                    label: 'MAC',
-                    tooltip: 'MAC address of the switch itself (not the connected device), e.g. aa:bb:cc:dd:ee:ff.',
+                    type: 'dropdown',
+                    label: 'Switch',
+                    tooltip: "Pick the switch from the list (pulled live from the console) — or type its MAC address directly, e.g. aa:bb:cc:dd:ee:ff, if it isn't in the list yet. This is the switch itself, not the connected device plugged into it.",
+                    choices: deviceChoices(self, 'mac', 'usw'),
                     default: '',
+                    allowCustom: true,
                 },
                 // unifi-api-ts parameter "port_idx" (required)
                 {
@@ -230,39 +262,42 @@ export function UpdateActions(self) {
         },
         // Reboot Cloud Key: Reboots the UniFi Cloud Key device, temporarily interrupting controller services.
         // Backed by unifi-api-ts: unifi.getDeviceManagementAPI().reboot_cloudkey(...)
-        device_reboot_cloudkey: {
+        /*device_reboot_cloudkey: {
             name: 'Devices: Reboot Cloud Key',
-            description: "Press this to reboot the UniFi Cloud Key (the controller hardware itself), not an individual AP or switch. This briefly takes the whole controller offline, so you'll lose access to the UniFi app and dashboards for a minute or two, though already-configured devices keep passing network traffic. Use only when the controller itself is misbehaving, not for routine device issues.",
+            description:
+                "Press this to reboot the UniFi Cloud Key (the controller hardware itself), not an individual AP or switch. This briefly takes the whole controller offline, so you'll lose access to the UniFi app and dashboards for a minute or two, though already-configured devices keep passing network traffic. Use only when the controller itself is misbehaving, not for routine device issues.",
             options: [],
             callback: async () => {
-                const unifi = self.unifi;
+                const unifi = self.unifi
                 if (!unifi) {
-                    self.log('warn', 'Devices: Reboot Cloud Key - not connected');
-                    return;
+                    self.log('warn', 'Devices: Reboot Cloud Key - not connected')
+                    return
                 }
+
                 try {
-                    const result = await unifi.getDeviceManagementAPI().reboot_cloudkey();
-                    self.log('debug', `Devices: Reboot Cloud Key: ${JSON.stringify(result)}`);
-                }
-                catch (error) {
-                    const message = error instanceof Error ? error.message : String(error);
-                    self.log('error', `Devices: Reboot Cloud Key failed: ${message}`);
+                    const result = await unifi.getDeviceManagementAPI().reboot_cloudkey()
+                    self.log('debug', `Devices: Reboot Cloud Key: ${JSON.stringify(result)}`)
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : String(error)
+                    self.log('error', `Devices: Reboot Cloud Key failed: ${message}`)
                 }
             },
         },
+        */
         // Restart Device: Restarts one or more UniFi devices, performing either a soft (graceful) or hard (forced) restart.
         // Backed by unifi-api-ts: unifi.getDeviceManagementAPI().restart_device(...)
         device_restart_device: {
             name: 'Devices: Restart Device',
             description: "Use this to reboot one or more devices — the safest way to fix a device that's acting up. A 'soft' restart is a normal graceful reboot; a 'hard' restart forces a rougher reboot for a device that's unresponsive. Anyone connected through that device (Wi-Fi clients on an AP, wired gear on a switch) briefly loses connection while it restarts, usually well under a minute.",
             options: [
-                // unifi-api-ts parameter "macs" (required) — a string | string[], entered here as a comma-separated list
+                // unifi-api-ts parameter "macs" (required) — a string | string[]
                 {
                     id: 'macs',
-                    type: 'textinput',
-                    label: 'MACs',
-                    default: '',
-                    tooltip: 'MAC address of the device (or several, separated by commas) to restart, e.g. aa:bb:cc:dd:ee:ff (comma-separated list).',
+                    type: 'multidropdown',
+                    label: 'Devices',
+                    tooltip: "Pick one or more devices from the list (pulled live from the console) to restart at once. Multi-select fields can't accept free-text entry, so a device needs to be known to the console — usually within 60 seconds of coming online — before it shows up here.",
+                    choices: deviceChoices(self, 'mac'),
+                    default: [],
                 },
                 // unifi-api-ts parameter "reboot_type" (optional) — one of: soft, hard
                 {
@@ -284,14 +319,9 @@ export function UpdateActions(self) {
                     return;
                 }
                 try {
-                    // Split "MACs" on commas into the array unifi-api-ts expects
-                    const macsList = event.options.macs
-                        .split(',')
-                        .map((v) => v.trim())
-                        .filter(Boolean);
                     // Narrow the dropdown's plain string back to the exact literal type unifi-api-ts expects
                     const rebootTypeValue = event.options.reboot_type;
-                    const result = await unifi.getDeviceManagementAPI().restart_device(macsList, rebootTypeValue);
+                    const result = await unifi.getDeviceManagementAPI().restart_device(event.options.macs, rebootTypeValue);
                     self.log('debug', `Devices: Restart Device: ${JSON.stringify(result)}`);
                 }
                 catch (error) {
@@ -312,10 +342,12 @@ export function UpdateActions(self) {
                 // unifi-api-ts parameter "mac" (required)
                 {
                     id: 'mac',
-                    type: 'textinput',
-                    label: 'MAC',
-                    tooltip: "The MAC address of the access point to scan, in the format aa:bb:cc:dd:ee:ff — found on the AP's details page in the UniFi UI.",
+                    type: 'dropdown',
+                    label: 'Access Point',
+                    tooltip: "Pick the access point to scan from the list (pulled live from the console) — or type its MAC address directly, e.g. aa:bb:cc:dd:ee:ff, if it isn't in the list yet.",
+                    choices: deviceChoices(self, 'mac', 'uap'),
                     default: '',
+                    allowCustom: true,
                 },
             ],
             callback: async (event) => {
@@ -344,10 +376,12 @@ export function UpdateActions(self) {
                 // unifi-api-ts parameter "mac" (required)
                 {
                     id: 'mac',
-                    type: 'textinput',
-                    label: 'MAC',
-                    tooltip: 'The MAC address of the access point whose scan results you want, in the format aa:bb:cc:dd:ee:ff — must match the AP you started the scan on.',
+                    type: 'dropdown',
+                    label: 'Access Point',
+                    tooltip: "Pick the access point whose scan results you want from the list (pulled live from the console) — or type its MAC address directly, e.g. aa:bb:cc:dd:ee:ff, if it isn't in the list yet. Must match the AP you started the scan on.",
+                    choices: deviceChoices(self, 'mac', 'uap'),
                     default: '',
+                    allowCustom: true,
                 },
             ],
             callback: async (event) => {
@@ -410,7 +444,9 @@ export function UpdateActions(self) {
             name: 'Statistics: Archive Alarm',
             description: "Press this to dismiss (archive) alarms in the controller so they no longer show as active. Leave the field blank to clear all current alarms at once, or enter one alarm's ID to clear just that one; use this after you've already reviewed the alarm and don't need it flagged anymore.",
             options: [
-                // unifi-api-ts parameter "alarm_id" (optional)
+                // unifi-api-ts parameter "alarm_id" (optional) — stays free text: unlike devices/clients, the
+                // module doesn't keep a live cache of alarms to build a picker from, and alarm IDs aren't
+                // something you'd typically know ahead of time anyway (this is normally left blank).
                 {
                     id: 'alarm_id',
                     type: 'textinput',
@@ -433,38 +469,6 @@ export function UpdateActions(self) {
                 catch (error) {
                     const message = error instanceof Error ? error.message : String(error);
                     self.log('error', `Statistics: Archive Alarm failed: ${message}`);
-                }
-            },
-        },
-        // Execute Stat Command: Executes a system statistics command, currently supporting a DPI (Deep Packet Inspection) reset operation.
-        // Backed by unifi-api-ts: unifi.getStatisticsAPI().cmd_stat(...)
-        stats_cmd_stat: {
-            name: 'Statistics: Execute Stat Command',
-            description: 'Press this to run a statistics-related system command on the controller. The only supported command permanently clears all Deep Packet Inspection traffic history and starts fresh, so only press this if you specifically want to wipe that data.',
-            options: [
-                // unifi-api-ts parameter "command" (required)
-                {
-                    id: 'command',
-                    type: 'textinput',
-                    label: 'Command',
-                    tooltip: 'The command to run. Currently only reset-dpi is supported, which permanently clears DPI (Deep Packet Inspection) traffic statistics. Type it exactly as reset-dpi.',
-                    default: '',
-                },
-            ],
-            callback: async (event) => {
-                const unifi = self.unifi;
-                if (!unifi) {
-                    self.log('warn', 'Statistics: Execute Stat Command - not connected');
-                    return;
-                }
-                try {
-                    // "site" is taken from the connection's configured Site (see the module's Settings tab), not a button field
-                    const result = await unifi.getStatisticsAPI().cmd_stat(event.options.command, self.config.site);
-                    self.log('debug', `Statistics: Execute Stat Command: ${JSON.stringify(result)}`);
-                }
-                catch (error) {
-                    const message = error instanceof Error ? error.message : String(error);
-                    self.log('error', `Statistics: Execute Stat Command failed: ${message}`);
                 }
             },
         },
