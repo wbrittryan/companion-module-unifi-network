@@ -1,4 +1,11 @@
 import { InstanceStatus } from '@companion-module/base';
+import { buildClientActions } from './actions/client.js';
+import { buildDeviceActions } from './actions/device.js';
+import { buildNetworkActions } from './actions/network.js';
+import { buildSecurityActions } from './actions/security.js';
+import { buildSiteActions } from './actions/site.js';
+import { buildStatsActions } from './actions/stats.js';
+import { buildUserActions } from './actions/user.js';
 export function UpdateActions(self) {
     self.setActionDefinitions({
         test_connection: {
@@ -22,6 +29,14 @@ export function UpdateActions(self) {
                 }
             },
         },
+        // Every command unifi-api-ts exposes, one action per method — see src/actions/*.ts.
+        ...buildClientActions(self),
+        ...buildDeviceActions(self),
+        ...buildNetworkActions(self),
+        ...buildSecurityActions(self),
+        ...buildSiteActions(self),
+        ...buildStatsActions(self),
+        ...buildUserActions(self),
     });
 }
 //# sourceMappingURL=actions.js.map
