@@ -38,7 +38,7 @@ export function GetConfigFields() {
             label: 'Site',
             width: 6,
             default: 'default',
-            tooltip: 'The name of your site as it appears in Site Manager.',
+            tooltip: 'Leave as "default" unless you know what you are doing.',
         },
         {
             type: 'checkbox',

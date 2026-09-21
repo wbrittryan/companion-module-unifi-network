@@ -32,7 +32,7 @@ export default class ModuleInstance extends InstanceBase {
         this.secrets = secrets;
         await this.connectToUnifi();
     }
-    // Connect to the UniFi Network application exposed by a UniFi console
+    // Connect to the UniFi Network application exposed by a UniFi console (tooling from unifi-api-ts)
     async connectToUnifi() {
         this.updateStatus(InstanceStatus.Connecting);
         try {
