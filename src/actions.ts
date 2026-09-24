@@ -146,7 +146,7 @@ export function UpdateActions(self: ModuleInstance): void {
 		client_reconnect_sta: {
 			name: 'Clients: Reconnect Client',
 			description:
-				"Press this to force a currently connected device to drop and immediately reconnect to Wi-Fi, useful when a device seems 'stuck' or is having connectivity trouble mid-event. This only affects the device's current session; it does not block or unblock it.",
+				"Use this to force a currently connected device to drop and immediately reconnect to Wi-Fi, useful when a device seems 'stuck' or is having connectivity trouble mid-event. This only affects the device's current session; it does not block or unblock it.",
 			options: [
 				// unifi-api-ts parameter "mac" (required)
 				{
@@ -372,7 +372,7 @@ export function UpdateActions(self: ModuleInstance): void {
 		/*device_reboot_cloudkey: {
 			name: 'Devices: Reboot Cloud Key',
 			description:
-				"Press this to reboot the UniFi Cloud Key (the controller hardware itself), not an individual AP or switch. This briefly takes the whole controller offline, so you'll lose access to the UniFi app and dashboards for a minute or two, though already-configured devices keep passing network traffic. Use only when the controller itself is misbehaving, not for routine device issues.",
+				"Use this to reboot the UniFi Cloud Key (the controller hardware itself), not an individual AP or switch. This briefly takes the whole controller offline, so you'll lose access to the UniFi app and dashboards for a minute or two, though already-configured devices keep passing network traffic. Use only when the controller itself is misbehaving, not for routine device issues.",
 			options: [],
 			callback: async () => {
 				const unifi = self.unifi
@@ -451,7 +451,7 @@ export function UpdateActions(self: ModuleInstance): void {
 		network_spectrum_scan: {
 			name: 'Network: Start Spectrum Scan',
 			description:
-				"Press this to start a wireless interference scan on a specific access point, which helps figure out why Wi-Fi is performing poorly in an area. The access point briefly pauses normal Wi-Fi service to perform the scan, which can cause a short disconnect for anyone connected to it, so it's best done before or after a service rather than during one.",
+				"Use this to start a wireless interference scan on a specific access point, which helps figure out why Wi-Fi is performing poorly in an area. The access point briefly pauses normal Wi-Fi service to perform the scan, which can cause a short disconnect for anyone connected to it, so it's best done before or after a service rather than during one.",
 			options: [
 				// unifi-api-ts parameter "mac" (required)
 				{
@@ -487,7 +487,7 @@ export function UpdateActions(self: ModuleInstance): void {
 		network_spectrum_scan_state: {
 			name: 'Network: Get Spectrum Scan Results',
 			description:
-				"Press this to retrieve the results of a spectrum scan you previously started on an access point, showing interference and channel usage details. Run the 'spectrum scan' action first and wait roughly 30 seconds before pressing this to get meaningful results.",
+				"Use this to retrieve the results of a spectrum scan you previously started on an access point, showing interference and channel usage details. Run the 'spectrum scan' action first and wait roughly 30 seconds before pressing this to get meaningful results.",
 			options: [
 				// unifi-api-ts parameter "mac" (required)
 				{
@@ -528,7 +528,7 @@ export function UpdateActions(self: ModuleInstance): void {
 		site_site_leds: {
 			name: 'Sites: Set Site LEDs',
 			description:
-				"Press this to turn the status LEDs on all of the site's UniFi devices on or off, for example to dim distracting lights during a service or dark stage environment, or to turn them back on so you can visually spot devices by their blinking lights. This is a safe, instantly-reversible cosmetic setting with no effect on network performance — set up two buttons, one for on and one for off, using different values.",
+				"Use this to turn the status LEDs on all of the site's UniFi devices on or off, for example to dim distracting lights during a service or dark stage environment, or to turn them back on so you can visually spot devices by their blinking lights. This is a safe, instantly-reversible cosmetic setting with no effect on network performance — set up two buttons, one for on and one for off, using different values.",
 			options: [
 				// unifi-api-ts parameter "enable" (required)
 				{
@@ -565,7 +565,7 @@ export function UpdateActions(self: ModuleInstance): void {
 		stats_archive_alarm: {
 			name: 'Statistics: Archive Alarm',
 			description:
-				"Press this to dismiss (archive) alarms in the controller so they no longer show as active. Leave the field blank to clear all current alarms at once, or enter one alarm's ID to clear just that one; use this after you've already reviewed the alarm and don't need it flagged anymore.",
+				"Use this to dismiss (archive) alarms in the controller so they no longer show as active. Leave the field blank to clear all current alarms at once, or enter one alarm's ID to clear just that one; use this after you've already reviewed the alarm and don't need it flagged anymore.",
 			options: [
 				// unifi-api-ts parameter "alarm_id" (optional) — stays free text: unlike devices/clients, the
 				// module doesn't keep a live cache of alarms to build a picker from, and alarm IDs aren't
