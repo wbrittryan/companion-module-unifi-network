@@ -78,8 +78,9 @@ export function GetConfigFields() {
             id: 'apiKey',
             label: 'Network API Key',
             width: 12,
-            tooltip: 'Create one in the UniFi Network application under Settings → Control Plane → Integrations → ' +
-                'Create New API Key (the exact menu location varies between Network versions 8.x, 9.x and 10.x). ' +
+            tooltip: 'Create one in the UniFi Network application: open the Integrations tab in the main navigation ' +
+                '(between Logs and Alarm Manager), then Create New API Key. Older Network versions may put it ' +
+                'somewhere else. ' +
                 'The key is only shown once, so copy it before closing the dialog. API keys are only supported on ' +
                 'UniFi OS consoles (UDM, UDR, UCG, UniFi OS Server, etc.), not the legacy self-hosted Network ' +
                 'Controller. The key acts as the admin that created it, so that admin needs read/write access to ' +

@@ -151,7 +151,7 @@ export async function createUnifiClient(config, secrets) {
         case 'networkApiKey': {
             const apiKey = secrets.apiKey?.trim();
             if (!apiKey) {
-                throw new Error('No Network API key configured. Create one in the UniFi Network application under Integrations.');
+                throw new Error('No Network API key configured. Create one from the Integrations tab in the UniFi Network application.');
             }
             if (config.consoleType === 'selfHosted') {
                 throw new Error('Network API keys only work on UniFi OS consoles, not self-hosted Network Controllers. Switch the ' +

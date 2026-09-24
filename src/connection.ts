@@ -218,7 +218,7 @@ export async function createUnifiClient(config: ModuleConfig, secrets: ModuleSec
 			const apiKey = secrets.apiKey?.trim()
 			if (!apiKey) {
 				throw new Error(
-					'No Network API key configured. Create one in the UniFi Network application under Integrations.',
+					'No Network API key configured. Create one from the Integrations tab in the UniFi Network application.',
 				)
 			}
 			if (config.consoleType === 'selfHosted') {
