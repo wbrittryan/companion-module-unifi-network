@@ -83,18 +83,6 @@ export type ActionsSchema = {
 		}
 	}
 
-	// ─── Networks ─── (unifi-api-ts: NetworkManagementAPI)
-	network_spectrum_scan: {
-		options: {
-			mac: string
-		}
-	}
-	network_spectrum_scan_state: {
-		options: {
-			mac: string
-		}
-	}
-
 	// ─── Sites ─── (unifi-api-ts: SiteManagementAPI)
 	site_site_leds: {
 		options: {
@@ -438,83 +426,6 @@ export function UpdateActions(self: ModuleInstance): void {
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error)
 					self.log('error', `Devices: Restart Device failed: ${message}`)
-				}
-			},
-		},
-
-		// ────────────────────────────────────────────────────────────────────────────
-		// Network — unifi-api-ts: NetworkManagementAPI
-		// ────────────────────────────────────────────────────────────────────────────
-
-		// Start Spectrum Scan: Initiates a spectrum scan on a specific Access Point to analyze wireless interference and channel utilization.
-		// Backed by unifi-api-ts: unifi.getNetworkManagementAPI().spectrum_scan(...)
-		network_spectrum_scan: {
-			name: 'Network: Start Spectrum Scan',
-			description:
-				"Use this to start a wireless interference scan on a specific access point, which helps figure out why Wi-Fi is performing poorly in an area. The access point briefly pauses normal Wi-Fi service to perform the scan, which can cause a short disconnect for anyone connected to it, so it's best done before or after a service rather than during one.",
-			options: [
-				// unifi-api-ts parameter "mac" (required)
-				{
-					id: 'mac',
-					type: 'dropdown',
-					label: 'Access Point',
-					tooltip:
-						"Pick the access point to scan from the list (pulled live from the console) — or type its MAC address directly, e.g. aa:bb:cc:dd:ee:ff, if it isn't in the list yet.",
-					choices: deviceChoices(self, 'mac', 'uap'),
-					default: '',
-					allowCustom: true,
-				},
-			],
-			callback: async (event) => {
-				const unifi = self.unifi
-				if (!unifi) {
-					self.log('warn', 'Networks: Start Spectrum Scan - not connected')
-					return
-				}
-
-				try {
-					// "site" is taken from the connection's configured Site (see the module's Settings tab), not a button field
-					const result = await unifi.getNetworkManagementAPI().spectrum_scan(event.options.mac, self.config.site)
-					self.log('debug', `Networks: Start Spectrum Scan: ${JSON.stringify(result)}`)
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error)
-					self.log('error', `Networks: Start Spectrum Scan failed: ${message}`)
-				}
-			},
-		},
-		// Get Spectrum Scan Results: Retrieves the results of a spectrum scan performed on a specific Access Point.
-		// Backed by unifi-api-ts: unifi.getNetworkManagementAPI().spectrum_scan_state(...)
-		network_spectrum_scan_state: {
-			name: 'Network: Get Spectrum Scan Results',
-			description:
-				"Use this to retrieve the results of a spectrum scan you previously started on an access point, showing interference and channel usage details. Run the 'spectrum scan' action first and wait roughly 30 seconds before pressing this to get meaningful results.",
-			options: [
-				// unifi-api-ts parameter "mac" (required)
-				{
-					id: 'mac',
-					type: 'dropdown',
-					label: 'Access Point',
-					tooltip:
-						"Pick the access point whose scan results you want from the list (pulled live from the console) — or type its MAC address directly, e.g. aa:bb:cc:dd:ee:ff, if it isn't in the list yet. Must match the AP you started the scan on.",
-					choices: deviceChoices(self, 'mac', 'uap'),
-					default: '',
-					allowCustom: true,
-				},
-			],
-			callback: async (event) => {
-				const unifi = self.unifi
-				if (!unifi) {
-					self.log('warn', 'Networks: Get Spectrum Scan Results - not connected')
-					return
-				}
-
-				try {
-					// "site" is taken from the connection's configured Site (see the module's Settings tab), not a button field
-					const result = await unifi.getNetworkManagementAPI().spectrum_scan_state(event.options.mac, self.config.site)
-					self.log('debug', `Networks: Get Spectrum Scan Results: ${JSON.stringify(result)}`)
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error)
-					self.log('error', `Networks: Get Spectrum Scan Results failed: ${message}`)
 				}
 			},
 		},
