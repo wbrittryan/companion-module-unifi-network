@@ -391,12 +391,12 @@ export function UpdateActions(self: ModuleInstance): void {
 			},
 		},
 		*/
-		// Restart Device: Restarts one or more UniFi devices, performing either a soft (graceful) or hard (forced) restart.
+		// Restart Device: Restarts one or more UniFi devices, either soft (just the device) or hard (also power-cycles its PoE ports).
 		// Backed by unifi-api-ts: unifi.getDeviceManagementAPI().restart_device(...)
 		device_restart_device: {
 			name: 'Devices: Restart Device',
 			description:
-				"Use this to reboot one or more devices — the safest way to fix a device that's acting up. A 'soft' restart is a normal graceful reboot; a 'hard' restart forces a rougher reboot for a device that's unresponsive. Anyone connected through that device (Wi-Fi clients on an AP, wired gear on a switch) briefly loses connection while it restarts, usually well under a minute.",
+				"Use this to reboot one or more devices — the safest way to fix a device that's acting up. A 'soft' restart reboots just the device. A 'hard' restart only applies to devices with PoE ports (PoE switches, some gateways) and also power-cycles every PoE port on them, so everything they power (APs, cameras, phones) restarts too. Anyone connected through that device (Wi-Fi clients on an AP, wired gear on a switch) briefly loses connection while it restarts, usually well under a minute.",
 			options: [
 				// unifi-api-ts parameter "macs" (required) — a string | string[]
 				{
@@ -414,7 +414,7 @@ export function UpdateActions(self: ModuleInstance): void {
 					type: 'dropdown',
 					label: 'Reboot Type',
 					tooltip:
-						"Type 'soft' for a normal graceful reboot (default), or 'hard' to force a harder reboot for an unresponsive device.",
+						"'soft' (default) restarts just the device. 'hard' also power-cycles every PoE port on a PoE switch or gateway, so everything it powers goes down and restarts too.",
 					choices: [
 						{ id: 'soft', label: 'soft' },
 						{ id: 'hard', label: 'hard' },

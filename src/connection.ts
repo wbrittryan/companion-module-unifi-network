@@ -206,8 +206,8 @@ export async function createUnifiClient(config: ModuleConfig, secrets: ModuleSec
 	// "Verify SSL Certificate") in the same Companion session actually takes effect.
 	delete process.env.NODE_TLS_REJECT_UNAUTHORIZED
 
-	// Connections configured before the connection-method dropdown existed have no authMethod; upgrades.ts
-	// fills it in, but fall back here too so a missing value never means "no way to connect".
+	// A connection saved before the connection-method dropdown existed has no authMethod; treat it as the
+	// username/password login it was set up with, so a missing value never means "no way to connect".
 	const authMethod = config.authMethod ?? 'userpass'
 
 	switch (authMethod) {
