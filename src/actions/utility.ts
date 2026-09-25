@@ -297,6 +297,9 @@ export function buildUtilityActions(self: ModuleInstance): CompanionActionDefini
 		// endpoint/payload shape per command verified against unifi-api-ts's own source (see COMMAND_SPEC).
 		utility_send_device_command: {
 			name: 'Utility: Send Device Command',
+			// Companion sorts the action picker by sortName when set (by name otherwise). Digits sort before
+			// letters, so this puts the module's most flexible action first without changing its visible name.
+			sortName: '0 Utility: Send Device Command',
 			description:
 				"Runs a command against a client device (phone, laptop, etc) or a UniFi infrastructure device (AP, switch, gateway) — pick which kind below, then pick the specific one from the list and what to do to it. The list is pulled live from the console and refreshes automatically; if something you're looking for isn't in it yet, you can still type its MAC address directly. Only commands the selected client or device supports are offered, and some commands need one extra field, which only appears once that command is selected.",
 			options: [
