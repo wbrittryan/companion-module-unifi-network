@@ -12,6 +12,8 @@ const CONSOLE_TYPE_PORTS: Record<Exclude<ConsoleType, 'custom'>, number> = {
 	selfHosted: 8443,
 }
 
+export const DEFAULT_STATUS_INTERVAL = 10
+
 export function resolvePort(config: ModuleConfig): number {
 	const consoleType = config.consoleType ?? 'custom'
 	return consoleType === 'custom' ? config.port : CONSOLE_TYPE_PORTS[consoleType]
@@ -26,6 +28,7 @@ export type ModuleConfig = {
 	consoleId: string
 	site: string
 	verifySsl: boolean
+	statusInterval: number
 }
 
 export type ModuleSecrets = {
@@ -198,6 +201,20 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
 			default: false,
 			tooltip: 'Disable for consoles using a self-signed certificate',
 			isVisibleExpression: IS_LOCAL,
+		},
+		{
+			type: 'number',
+			id: 'statusInterval',
+			label: 'Status Refresh Interval (seconds)',
+			width: 6,
+			min: 2,
+			max: 300,
+			default: DEFAULT_STATUS_INTERVAL,
+			tooltip:
+				'How often to ask the console for device status (port links, PoE, outlets), which is what the ' +
+				'feedbacks light up from. Lower is snappier; higher means less traffic, which matters most with ' +
+				'Site Manager, where every refresh goes through the cloud. The client list for pickers refreshes ' +
+				'every 60 seconds regardless.',
 		},
 	]
 }

@@ -1,6 +1,15 @@
 import type { CompanionActionDefinitions, CompanionInputFieldDropdown, DropdownChoice } from '@companion-module/base'
 import type { UniFiDevice } from 'unifi-api-ts'
 import type ModuleInstance from '../main.js'
+import {
+	deviceLabel,
+	macKey,
+	outletLabel,
+	poePorts,
+	portLabel,
+	switchableOutlets,
+	type DeviceWithOutlets,
+} from '../devices.js'
 
 // Utility — unifi-api-ts: UniFiClient.customApiRequest (UtilityAPI)
 export type UtilityActionsSchema = {
@@ -35,20 +44,6 @@ export type UtilityActionsSchema = {
 	}
 }
 
-// Friendlier labels for unifi-api-ts's UniFiDevice.type codes, used in the device picker below.
-// "usp" (UPS/UPS Pro) isn't in unifi-api-ts's own typed union — that library predates the product —
-// but the live console reports it as "usp", confirmed against community integrations that already
-// support the UPS-2U-Pro (see the tooltip on the outlet fields below for details/caveats).
-export const DEVICE_TYPE_LABELS: Record<string, string> = {
-	uap: 'Access Point',
-	usw: 'Switch',
-	ugw: 'Gateway',
-	usg: 'Gateway',
-	udm: 'Dream Machine',
-	uxg: 'UXG Gateway',
-	usp: 'UPS',
-}
-
 // Verified against unifi-api-ts's ClientManagementAPI/DeviceManagementAPI source: which endpoint each
 // command goes to, and whether it takes a single "mac" or a "macs" array.
 const COMMAND_SPEC: Record<string, { endpoint: string; macField: 'mac' | 'macs' }> = {
@@ -66,18 +61,6 @@ const COMMAND_SPEC: Record<string, { endpoint: string; macField: 'mac' | 'macs' 
 	'set-locate': { endpoint: 'cmd/devmgr', macField: 'mac' },
 	'unset-locate': { endpoint: 'cmd/devmgr', macField: 'mac' },
 }
-
-// UniFi's raw device-state payload for anything in the SmartPower family (UPS, UPS Pro, PDU Pro,
-// Smart Plug, Smart Strip, ...) includes an outlet_table that unifi-api-ts doesn't model in its UniFiDevice
-// type. has_relay is false for metering-only outlets, which report power draw but can't be switched.
-interface OutletTableEntry {
-	index: number
-	name?: string
-	relay_state?: boolean
-	has_relay?: boolean
-}
-
-type DeviceWithOutlets = UniFiDevice & { outlet_table?: OutletTableEntry[] }
 
 // Every command, with the label used when it's offered. The filtered lists below just pick from these.
 const CLIENT_COMMAND_CHOICES: Record<string, string> = {
@@ -136,14 +119,6 @@ function groupOffers(commands: readonly string[], command: string): boolean {
 	return commands.includes(command)
 }
 
-function poePorts(device: UniFiDevice): NonNullable<UniFiDevice['port_table']> {
-	return device.port_table?.filter((port) => port.port_poe === true) ?? []
-}
-
-function switchableOutlets(device: UniFiDevice): OutletTableEntry[] {
-	return (device as DeviceWithOutlets).outlet_table?.filter((outlet) => outlet.has_relay !== false) ?? []
-}
-
 function deviceGroup(device: UniFiDevice): DeviceCommandGroup {
 	const poe = poePorts(device).length > 0
 	const outlet = switchableOutlets(device).length > 0
@@ -157,12 +132,6 @@ function clientGroup(client: { is_guest?: boolean }): ClientCommandGroup | undef
 	if (client.is_guest === true) return 'guest'
 	if (client.is_guest === false) return 'regular'
 	return undefined
-}
-
-// Per-device field ids (port_of_<mac>, outlet_of_<mac>) use the MAC as plain hex, since field ids end up in
-// Companion expressions and saved button configs.
-function macKey(mac: string): string {
-	return mac.toLowerCase().replace(/[^0-9a-f]/g, '')
 }
 
 function choicesFrom(labels: Record<string, string>, commands: readonly string[]): DropdownChoice[] {
@@ -184,7 +153,7 @@ function fieldIsNoneOf(field: string, values: string[]): string {
 
 export function buildUtilityActions(self: ModuleInstance): CompanionActionDefinitions<UtilityActionsSchema> {
 	// Everything below that depends on which client/device is selected compares against the live inventory,
-	// so it's rebuilt along with the actions every time the inventory refreshes (ModuleInstance.refreshInventory).
+	// so it's rebuilt along with the actions whenever the inventory changes (ModuleInstance.refreshDefinitionsIfChanged).
 	// Matching is exact, same as the callback's lookups, so the fields the user sees are the ones the callback reads.
 	const IS_CLIENT = '$(options:target_type) == "client"'
 	const IS_DEVICE = '$(options:target_type) == "device"'
@@ -259,10 +228,7 @@ export function buildUtilityActions(self: ModuleInstance): CompanionActionDefini
 				type: 'dropdown',
 				label: 'Switch Port',
 				tooltip: `Which PoE port on ${device.name ?? device.mac} to power cycle. Only ports that can supply PoE are listed.`,
-				choices: ports.map((port) => {
-					const label = `Port ${port.port_idx}`
-					return { id: port.port_idx, label: port.name && port.name !== label ? `${label} — ${port.name}` : label }
-				}),
+				choices: ports.map((port) => ({ id: port.port_idx, label: portLabel(port) })).sort((a, b) => a.id - b.id),
 				default: ports[0].port_idx,
 				isVisibleExpression: `${IS_DEVICE} && $(options:device_mac) == "${device.mac}" && $(options:device_command_${deviceGroup(device)}) == "power-cycle"`,
 			},
@@ -279,10 +245,9 @@ export function buildUtilityActions(self: ModuleInstance): CompanionActionDefini
 				type: 'dropdown',
 				label: 'Outlet',
 				tooltip: `Which outlet on ${device.name ?? device.mac} to switch. Metering-only outlets can't be switched, so they aren't listed.`,
-				choices: outlets.map((outlet) => {
-					const label = `Outlet ${outlet.index}`
-					return { id: outlet.index, label: outlet.name && outlet.name !== label ? `${label} — ${outlet.name}` : label }
-				}),
+				choices: outlets
+					.map((outlet) => ({ id: outlet.index, label: outletLabel(outlet) }))
+					.sort((a, b) => a.id - b.id),
 				default: outlets[0].index,
 				isVisibleExpression: `${IS_DEVICE} && $(options:device_mac) == "${device.mac}" && $(options:device_command_${deviceGroup(device)}) == "set-outlet"`,
 			},
@@ -291,7 +256,7 @@ export function buildUtilityActions(self: ModuleInstance): CompanionActionDefini
 
 	return {
 		// Send Device Command: pick a client or device from a live-updating list pulled from the console
-		// (self.devices/self.clients, refreshed every 60s by ModuleInstance.refreshInventory), then what
+		// (self.devices/self.clients, kept fresh by ModuleInstance.pollDevices/pollClients), then what
 		// to do to it — this action builds the correct UniFi API request internally, so no MAC/path/
 		// payload typing is required. Backed by unifi-api-ts: unifi.customApiRequest(...), with the exact
 		// endpoint/payload shape per command verified against unifi-api-ts's own source (see COMMAND_SPEC).
@@ -351,10 +316,7 @@ export function buildUtilityActions(self: ModuleInstance): CompanionActionDefini
 					label: 'Device',
 					tooltip:
 						"Pick a device from the list (pulled live from the console) — or type a MAC address directly, e.g. aa:bb:cc:dd:ee:ff, if it isn't in the list yet.",
-					choices: self.devices.map((d) => ({
-						id: d.mac,
-						label: `${d.name ?? d.model} (${DEVICE_TYPE_LABELS[d.type] ?? d.type}) — ${d.mac}`,
-					})),
+					choices: self.devices.map((d) => ({ id: d.mac, label: deviceLabel(d) })),
 					default: '',
 					allowCustom: true,
 					disableAutoExpression: true,

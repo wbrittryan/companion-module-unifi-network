@@ -1,12 +1,13 @@
 import { InstanceBase, InstanceStatus, type SomeCompanionConfigField } from '@companion-module/base'
 import type { UniFiClient, UniFiDevice } from 'unifi-api-ts'
-import { GetConfigFields, type ModuleConfig, type ModuleSecrets } from './config.js'
+import { DEFAULT_STATUS_INTERVAL, GetConfigFields, type ModuleConfig, type ModuleSecrets } from './config.js'
 import { UpdateVariableDefinitions, type VariablesSchema } from './variables.js'
 import { UpgradeScripts } from './upgrades.js'
 import { UpdateActions, type ActionsSchema } from './actions.js'
-import { UpdateFeedbacks, type FeedbacksSchema } from './feedbacks.js'
+import { LIVE_FEEDBACK_IDS, UpdateFeedbacks, type FeedbacksSchema } from './feedbacks.js'
 import { UpdatePresets } from './presets.js'
 import { createUnifiClient } from './connection.js'
+import { definitionsSignature } from './devices.js'
 
 export type ModuleSchema = {
 	config: ModuleConfig
@@ -36,11 +37,19 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 	secrets!: ModuleSecrets // Setup in init()
 	unifi?: UniFiClient
 
-	// Live inventory of what's on the console, refreshed on a timer once connected — lets actions
-	// like "Utility: Send Device Command" offer a picker instead of a raw MAC address text field.
+	// Live inventory of what's on the console, refreshed on timers once connected. Devices drive both the
+	// pickers in actions/feedbacks and the feedbacks' live state (port links, PoE, outlets), so they refresh
+	// on the configurable Status Refresh Interval. Clients only feed pickers and can number in the hundreds,
+	// so they stay on a slow 60s refresh.
 	devices: UniFiDevice[] = []
 	clients: UniFiClientRecord[] = []
-	inventoryTimer?: NodeJS.Timeout
+	deviceTimer?: NodeJS.Timeout
+	clientTimer?: NodeJS.Timeout
+	// Skip a poll while the previous one is still in flight (slow console, Site Manager round trips), rather
+	// than letting requests stack up.
+	devicePollInFlight = false
+	// See definitionsSignature(): definitions are only rebuilt when this changes, not on every poll.
+	lastDefinitionsSignature = ''
 
 	constructor(internal: unknown) {
 		super(internal)
@@ -61,28 +70,57 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 	async destroy(): Promise<void> {
 		this.log('debug', 'destroy')
 
-		if (this.inventoryTimer) {
-			clearInterval(this.inventoryTimer)
-			this.inventoryTimer = undefined
+		this.stopPolling()
+	}
+
+	stopPolling(): void {
+		clearInterval(this.deviceTimer)
+		clearInterval(this.clientTimer)
+		this.deviceTimer = undefined
+		this.clientTimer = undefined
+	}
+
+	// Failures here are logged, not thrown — a stale inventory shouldn't take down the connection, and the
+	// picker fields fall back to free text either way.
+	async pollDevices(): Promise<void> {
+		const unifi = this.unifi
+		if (!unifi || this.devicePollInFlight) return
+
+		this.devicePollInFlight = true
+		try {
+			this.devices = await unifi.listDevices()
+			this.refreshDefinitionsIfChanged()
+			this.checkFeedbacks(...LIVE_FEEDBACK_IDS)
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error)
+			this.log('warn', `Failed to refresh device status: ${message}`)
+		} finally {
+			this.devicePollInFlight = false
 		}
 	}
 
-	// Pull the current device/client list from the console and rebuild action definitions so any
-	// device/client picker dropdowns reflect it. Failures are logged, not thrown — a stale inventory
-	// shouldn't take down the connection, and the picker fields fall back to free text either way.
-	async refreshInventory(): Promise<void> {
+	async pollClients(): Promise<void> {
 		const unifi = this.unifi
 		if (!unifi) return
 
 		try {
-			const [devices, clients] = await Promise.all([unifi.listDevices(), unifi.listUsers()])
-			this.devices = devices
-			this.clients = clients
-			this.updateActions()
+			this.clients = await unifi.listUsers()
+			this.refreshDefinitionsIfChanged()
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error)
-			this.log('warn', `Failed to refresh device/client inventory: ${message}`)
+			this.log('warn', `Failed to refresh client list: ${message}`)
 		}
+	}
+
+	// Rebuild action/feedback definitions (their pickers and visibility rules are built from the inventory)
+	// only when the inventory's makeup changed, e.g. a device was added or a port renamed. Re-sending
+	// definitions on every status poll would churn Companion's UI for no reason.
+	refreshDefinitionsIfChanged(): void {
+		const signature = definitionsSignature(this.devices, this.clients)
+		if (signature === this.lastDefinitionsSignature) return
+		this.lastDefinitionsSignature = signature
+		this.updateActions()
+		this.updateFeedbacks()
 	}
 
 	async configUpdated(config: ModuleConfig, secrets: ModuleSecrets): Promise<void> {
@@ -96,23 +134,19 @@ export default class ModuleInstance extends InstanceBase<ModuleSchema> {
 	async connectToUnifi(): Promise<void> {
 		this.updateStatus(InstanceStatus.Connecting)
 
-		if (this.inventoryTimer) {
-			clearInterval(this.inventoryTimer)
-			this.inventoryTimer = undefined
-		}
+		this.stopPolling()
 
 		try {
 			this.unifi = await createUnifiClient(this.config, this.secrets)
 
 			this.updateStatus(InstanceStatus.Ok)
 
-			// Populate the picker dropdowns immediately, then keep them in sync every 60s. 60s is
-			// conservative on purpose — polling faster risks tripping the console's own login/request
-			// rate limiter, which happened earlier during unrelated rapid reconnect testing.
-			await this.refreshInventory()
-			this.inventoryTimer = setInterval(() => {
-				void this.refreshInventory()
-			}, 60_000)
+			// Populate the pickers and feedback state immediately, then keep them in sync. Polling only reads
+			// data; it never logs in again, so it doesn't touch the console's login rate limiter.
+			await Promise.all([this.pollDevices(), this.pollClients()])
+			const statusSeconds = this.config.statusInterval || DEFAULT_STATUS_INTERVAL
+			this.deviceTimer = setInterval(() => void this.pollDevices(), statusSeconds * 1000)
+			this.clientTimer = setInterval(() => void this.pollClients(), 60_000)
 		} catch (error) {
 			this.unifi = undefined
 			this.log('error', `Failed to connect to UniFi console: ${error instanceof Error ? error.message : String(error)}`)

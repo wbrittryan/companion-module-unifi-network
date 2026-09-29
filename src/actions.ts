@@ -1,10 +1,11 @@
 import { InstanceStatus, type DropdownChoice } from '@companion-module/base'
 import type ModuleInstance from './main.js'
-import { buildUtilityActions, DEVICE_TYPE_LABELS, type UtilityActionsSchema } from './actions/utility.js'
+import { buildUtilityActions, type UtilityActionsSchema } from './actions/utility.js'
+import { deviceLabel } from './devices.js'
 
-// Live dropdown choices built from the cached device inventory (self.devices, refreshed every 60s — see
-// ModuleInstance.refreshInventory in main.ts), same pattern as the Utility action's device picker. Every
-// action below rebuilds its choices fresh each time UpdateActions() runs, so a refresh keeps them in sync.
+// Live dropdown choices built from the cached device inventory (self.devices — see ModuleInstance.pollDevices
+// in main.ts), same pattern as the Utility action's device picker. Every action below rebuilds its choices
+// fresh each time UpdateActions() runs, which happens whenever the inventory's makeup changes.
 // idField picks whether each choice's value is the device's MAC or its internal _id, since different
 // unifi-api-ts endpoints key on one or the other (fire-and-forget commands use MAC, REST config endpoints
 // like led_override use _id) — filterType narrows to one UniFiDevice.type when an action only ever
@@ -12,10 +13,7 @@ import { buildUtilityActions, DEVICE_TYPE_LABELS, type UtilityActionsSchema } fr
 function deviceChoices(self: ModuleInstance, idField: 'mac' | '_id', filterType?: string): DropdownChoice[] {
 	return self.devices
 		.filter((d) => !filterType || d.type === filterType)
-		.map((d) => ({
-			id: d[idField],
-			label: `${d.name ?? d.model} (${DEVICE_TYPE_LABELS[d.type] ?? d.type}) — ${d.mac}`,
-		}))
+		.map((d) => ({ id: d[idField], label: deviceLabel(d) }))
 }
 
 // Same, for the live client inventory (self.clients).
@@ -474,9 +472,9 @@ export function UpdateActions(self: ModuleInstance): void {
 		// Archive Alarm: Archives (dismisses) a specific alarm by ID, or all current alarms if no ID is provided.
 		// Backed by unifi-api-ts: unifi.getStatisticsAPI().archive_alarm(...)
 		stats_archive_alarm: {
-			name: 'Statistics: Archive Alarm',
+			name: 'Statistics: Dismiss Alarm',
 			description:
-				"Use this to dismiss (archive) alarms in the controller so they no longer show as active. Leave the field blank to clear all current alarms at once, or enter one alarm's ID to clear just that one; use this after you've already reviewed the alarm and don't need it flagged anymore.",
+				"Use this to dismiss (or 'archive') alarms in the controller so they no longer show as active. Leave the field blank to clear all current alarms at once, or enter one alarm's ID to clear just that one; use this after you've already reviewed the alarm and don't need it flagged anymore.",
 			options: [
 				// unifi-api-ts parameter "alarm_id" (optional) — stays free text: unlike devices/clients, the
 				// module doesn't keep a live cache of alarms to build a picker from, and alarm IDs aren't
@@ -507,7 +505,9 @@ export function UpdateActions(self: ModuleInstance): void {
 				}
 			},
 		},
-		// See src/actions/utility.ts for the raw-command escape hatch.
+		// ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+		// See src/actions/utility.ts for the raw-command escape hatch. Probably the most useful action in this module.
+		// ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 		...buildUtilityActions(self),
 	})
 }
